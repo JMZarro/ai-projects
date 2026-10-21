@@ -1,0 +1,6 @@
+receipt-manager-agent/build/
+receipt-manager-agent/dist/
+**/__pycache__/
+*.py[cod]
+.env
+.env.*
