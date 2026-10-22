@@ -36,3 +36,5 @@ This file contains a growing ruleset that improves over time.  **At session star
 ## Learned Rules
 
 <!-- New rules are appended below this line.  Do not edit above this section. -->
+1. [CODE] Always use a threading.Lock() when multiple threads or subagents log concurrently to shared status files (e.g. .jsonl, .txt) and flush immediately - because concurrent file writes without synchronization cause interleaved lines and corrupt JSON parsing.
+2. [CODE] Always handle json.JSONDecodeError per line when streaming or reading JSONL status logs - because a single malformed line must never crash the entire reader or orchestrator status monitoring loop.
