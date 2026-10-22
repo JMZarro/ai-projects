@@ -1,3 +1,8 @@
+---
+name: ai-crawlability-auditor
+description: Audits client websites for AI readiness and LLM crawlability, evaluating robots.txt (GPTBot/ClaudeBot/PerplexityBot), semantic HTML, accessibility tree context, RAG content structure, JSON-LD schema markup, and machine-friendly formats like llms.txt. Generates structured txt audit reports.
+---
+
 # AI Crawlability System Instructions & Blueprint
 
 This document defines the behavioral instructions, prompt sequences, and execution steps for an AI agent tasked with auditing client websites for AI readiness and crawlability.
