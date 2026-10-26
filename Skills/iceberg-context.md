@@ -68,3 +68,13 @@ Before making any tool call, verify:
 1. *Am I pulling more than 100 lines into context?* If yes, narrow the query or pipe to a file.
 2. *Can I find this exact line with Grep instead of reading the whole module?* If yes, Grep first.
 3. *Am I holding draft data in chat that belongs in a scratch file?* If yes, write to scratch.
+
+### Important Architectural Recommendation: Rule vs. Skill
+
+While making this a **Skill** allows it to be invoked on demand, **context degradation happens turn-by-turn during normal work before you realize the window is full.**
+To make the Iceberg Technique truly preventative, it is best enforced as an **Always-On Rule** in your project's `GEMINI.md`.
+You can append this directly to your `GEMINI.md` under **Learned Rules**:
+
+```markdown
+3. [ARCH] Always apply the Iceberg Technique to context management: never read whole files when line-bounded reads (`StartLine`/`EndLine`) suffice, pipe or limit terminal outputs to <30 lines, write intermediate working state to disk/scratch files rather than long chat monologues, and immediately persist architectural decisions and corrections to GEMINI.md - because conversational context compaction erases unpersisted nuance and lessons learned.
+```
