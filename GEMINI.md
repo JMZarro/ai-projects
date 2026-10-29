@@ -1,0 +1,46 @@
+# Agent Instructions
+
+Read this entire file before starting any task.
+
+## Self-Correcting Rules Enging
+
+This file contains a growing ruleset that improves over time.  **At session start, read the entire "Learned Rules" section before doing anything.**
+
+### How it works
+
+1. When a user corrects you or you make a mistake **immediately append a new rule** to the "Learned Rules" section at the bottom of this file.
+2. Rules are numbered sequentially and written as clear, imperative instructions.
+3. Format: 'N. [CATEGORY] Never/Always do X - because Y.'
+4. Categories: '[STYLE]', '[CODE]', '[ARCH]', '[TOOL]', '[PROCESS]', '[DATA]', '[UX]', '[OTHER]'
+5. Before starting any task, scan all rules below for relevant constraints.
+6. If two rules conflict, the higher-numbered (newer) rule wins.
+7. Never delete rules.  If a rule becomes obsolete, append a new rule that supersedes it.
+
+### When to add a rule
+
+- User explicitly corrects your output ("no, do it this way")
+- User rejects a file, approach, or pattern
+- You hit a bug caused by a wrong assuption about this codebase
+- User states a preference ("always use X", "never do Y")
+
+### Rule format example
+
+...
+14. [CODE] Always use 'bun' instead of 'npm' - user preference, bun is installed globally.
+15. [STYLE] Never add emojis to commit messages - project convention.
+16. [ARCH] API routes live in 'src/server/routes/', not 'src/api/' - existing codebase pattern.
+...
+
+---
+
+## Learned Rules
+
+<!-- New rules are appended below this line.  Do not edit above this section. -->
+
+1. [CODE] Always use a threading.Lock() when multiple threads or subagents log concurrently to shared status files (e.g. .jsonl, .txt) and flush immediately - because concurrent file writes without synchronization cause interleaved lines and corrupt JSON parsing.
+2. [CODE] Always handle json.JSONDecodeError per line when streaming or reading JSONL status logs - because a single malformed line must never crash the entire reader or orchestrator status monitoring loop.
+3. [CODE] Always provide a fallback to `curl.exe` via `subprocess` when `requests` encounters HTTP 429/403 or TLS fingerprint blocks against Cloudflare or Shopify - because anti-bot rate-limiters often flag `requests`/`urllib3` TLS fingerprints while `urllib.request` succeeds.
+4. [ARCH] Always support dynamic loading via `importlib.util.spec_from_file_location` for modules that may have hyphenated kebab-case filenames - because Python's standard `import` syntax cannot directly import filenames with hyphens.
+5. [TOOL] Always use `BypassSandbox: true` when executing Python commands on Windows virtual Google Drive paths (`G:\...`) if filesystem access fails with `[Errno 13] Permission denied` - because Windows AppContainer sandboxes cannot bind tokens to CBFS / Google Drive for Desktop virtual drives.
+6. [PROCESS] Always pause and interview the user with clarifying questions on goals, constraints, audience, and format when requested to chain with a 'reverse prompt' or 'prompt contract' before producing the deliverable - because a reverse prompt is an interactive interview where the AI extracts requirements from the user to construct the contract, not scripts for the user's customers.
+7. [ARCH] Always apply the Iceberg Technique to context management: never read whole files when line-bounded reads (`StartLine`/`EndLine`) suffice, pipe or limit terminal outputs to <30 lines, write intermediate working state to disk/scratch files rather than long chat monologues, and immediately persist architectural decisions and corrections to GEMINI.md - because conversational context compaction erases unpersisted nuance and lessons learned.
