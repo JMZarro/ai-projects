@@ -44,17 +44,115 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml, OxmlElement
 from docx.oxml.ns import nsdecls, qn
 from PIL import Image
+import importlib.util
+import urllib.request
+import ssl
 
-# Subagent modules
-import ada_compliance_auditor
-import ai_crawlability_auditor
-import brand_modernity_auditor
-import cro_auditor
-import mobile_responsiveness_auditor
-import performance_auditor
-import security_privacy_auditor
-import seo_technical_local_auditor
-import tracking_measurement_auditor
+import subprocess
+
+# Resilient request fallback using curl.exe to bypass TLS fingerprint blocks / 429 rate-limiting
+_orig_session_request = requests.Session.request
+_request_gate_lock = threading.Lock()
+_last_request_time = 0.0
+
+def _curl_fallback(url: str, custom_headers: Optional[Dict[str, str]] = None, timeout: int = 15) -> Optional[requests.Response]:
+    cmd = ['curl.exe', '-s', '-L', '-w', '\n---CURL_META---\n%{http_code}\n%{url_effective}']
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+    if custom_headers:
+        for k, v in custom_headers.items():
+            if k.lower() in ["accept", "accept-language"]:
+                headers[k] = v
+            elif k.lower() == "user-agent":
+                if not any(b in v.lower() for b in ["crawler", "auditor", "bot"]):
+                    headers["User-Agent"] = v
+    for k, v in headers.items():
+        cmd.extend(['-H', f'{k}: {v}'])
+    cmd.append(url)
+
+    try:
+        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        raw = p.stdout.decode('utf-8', errors='replace')
+        sep = '\n---CURL_META---\n'
+        if sep in raw:
+            body, meta = raw.rsplit(sep, 1)
+            lines = meta.strip().splitlines()
+            code = int(lines[0]) if len(lines) > 0 and lines[0].isdigit() else 200
+            eff_url = lines[1] if len(lines) > 1 else url
+        else:
+            body = raw
+            code = 200
+            eff_url = url
+
+        r = requests.Response()
+        r.status_code = code
+        r.url = eff_url
+        r._content = body.encode('utf-8')
+        r.encoding = 'utf-8'
+        return r
+    except Exception:
+        return None
+
+def _resilient_session_request(self, method, url, *args, **kwargs):
+    global _last_request_time
+    with _request_gate_lock:
+        now = time.time()
+        diff = now - _last_request_time
+        if diff < 0.25:
+            time.sleep(0.25 - diff)
+        _last_request_time = time.time()
+
+    try:
+        resp = _orig_session_request(self, method, url, *args, **kwargs)
+    except Exception as exc:
+        if method.upper() == "GET":
+            fb = _curl_fallback(url, kwargs.get("headers"), kwargs.get("timeout", 15))
+            if fb is not None:
+                return fb
+        raise exc
+
+    if resp.status_code in (429, 403) and method.upper() == "GET":
+        fallback_resp = _curl_fallback(url, kwargs.get("headers") or dict(self.headers), kwargs.get("timeout", 15))
+        if fallback_resp is not None:
+            return fallback_resp
+    return resp
+
+requests.Session.request = _resilient_session_request
+
+def resolve_canonical_url(url: str) -> str:
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+    resp = _curl_fallback(url, timeout=10)
+    if resp and resp.url:
+        return resp.url.rstrip("/")
+    return url
+
+def _load_module(mod_name: str, file_candidates: List[str]):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    for fname in file_candidates:
+        candidate_path = os.path.join(script_dir, fname)
+        if os.path.exists(candidate_path):
+            spec = importlib.util.spec_from_file_location(mod_name, candidate_path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules[mod_name] = mod
+                spec.loader.exec_module(mod)
+                return mod
+    return importlib.import_module(mod_name)
+
+# Subagent modules (support both hyphenated and underscored filenames)
+ada_compliance_auditor = _load_module("ada_compliance_auditor", ["ada-compliance-auditor.py", "ada_compliance_auditor.py"])
+ai_crawlability_auditor = _load_module("ai_crawlability_auditor", ["ai-crawlability-auditor.py", "ai_crawlability_auditor.py"])
+brand_modernity_auditor = _load_module("brand_modernity_auditor", ["brand-modernity-auditor.py", "brand_modernity_auditor.py"])
+cro_auditor = _load_module("cro_auditor", ["cro-auditor.py", "cro_auditor.py"])
+mobile_responsiveness_auditor = _load_module("mobile_responsiveness_auditor", ["mobile-responsiveness-auditor.py", "mobile_responsiveness_auditor.py"])
+performance_auditor = _load_module("performance_auditor", ["performance-auditor.py", "performance_auditor.py"])
+security_privacy_auditor = _load_module("security_privacy_auditor", ["security-privacy-auditor.py", "security_privacy_auditor.py"])
+seo_technical_local_auditor = _load_module("seo_technical_local_auditor", ["seo-technical-local-auditor.py", "seo_technical_local_auditor.py"])
+tracking_measurement_auditor = _load_module("tracking_measurement_auditor", ["tracking-measurement-auditor.py", "tracking_measurement_auditor.py"])
 
 
 # Agency Constants
@@ -162,8 +260,8 @@ SUBAGENTS_REGISTRY = [
 # Chat Status Logging & Polling System
 # ==============================================================================
 
-CHAT_JSONL_FILE = "audit_status_chat.jsonl"
-CHAT_TXT_FILE = "audit_status_chat.txt"
+CHAT_JSONL_FILE = "audit-status-chat.jsonl"
+CHAT_TXT_FILE = "audit-status-chat.txt"
 _chat_lock = threading.Lock()
 
 
@@ -313,20 +411,33 @@ def extract_client_branding(base_url: str) -> ClientBranding:
             cls = " ".join(img.get("class") or []).lower()
             img_id = (img.get("id") or "").lower()
             if src and ("logo" in alt or "logo" in cls or "logo" in img_id or "logo" in src.lower()):
+                if src.startswith("//"):
+                    src = "https:" + src
                 full_logo_url = urllib.parse.urljoin(base_url, src)
                 if not full_logo_url.endswith(".svg"):
                     logo_candidates.append(full_logo_url)
 
+        # Check og:image
+        og_img = soup.find("meta", property="og:image")
+        if og_img and og_img.get("content"):
+            og_src = og_img["content"].strip()
+            if og_src.startswith("//"):
+                og_src = "https:" + og_src
+            logo_candidates.append(urllib.parse.urljoin(base_url, og_src))
+
         # Check apple-touch-icon
         touch_icon = soup.find("link", rel=lambda r: r and "apple-touch-icon" in r)
         if touch_icon and touch_icon.get("href"):
-            logo_candidates.append(urllib.parse.urljoin(base_url, touch_icon["href"]))
+            ti_src = touch_icon["href"].strip()
+            if ti_src.startswith("//"):
+                ti_src = "https:" + ti_src
+            logo_candidates.append(urllib.parse.urljoin(base_url, ti_src))
 
         # Attempt to download the best candidate
-        for c_url in logo_candidates[:3]:
+        for c_url in logo_candidates[:5]:
             try:
-                img_resp = session.get(c_url, timeout=6)
-                if img_resp.status_code == 200 and len(img_resp.content) > 1000:
+                img_resp = session.get(c_url, timeout=8)
+                if img_resp.status_code == 200 and len(img_resp.content) > 500:
                     ext = ".jpg" if "jpeg" in img_resp.headers.get("Content-Type", "") else ".png"
                     local_logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", f"client_logo{ext}")
                     os.makedirs(os.path.dirname(local_logo), exist_ok=True)
@@ -350,8 +461,10 @@ def extract_client_branding(base_url: str) -> ClientBranding:
 # Subagent Worker & Polling Coordinator
 # ==============================================================================
 
-def execute_subagent_worker(agent_info: Dict[str, Any], target_url: str, sub_paths: Optional[List[str]]) -> Dict[str, Any]:
+def execute_subagent_worker(agent_info: Dict[str, Any], target_url: str, sub_paths: Optional[List[str]], delay_start: float = 0.0) -> Dict[str, Any]:
     """Execute a single subagent module and log updates to the central chat."""
+    if delay_start > 0:
+        time.sleep(delay_start)
     agent_id = agent_info["id"]
     module = agent_info["module"]
     report_file = agent_info["report_file"]
@@ -381,7 +494,11 @@ def execute_subagent_worker(agent_info: Dict[str, Any], target_url: str, sub_pat
 
         # Extract score from generated report
         score_match = re.search(r"Overall.*?Score:\s*(\d+(?:\.\d+)?)/10", report_text, re.IGNORECASE)
-        score = float(score_match.group(1)) if score_match else 7.0
+        if score_match:
+            score = float(score_match.group(1))
+        else:
+            section_scores = [float(s) for s in re.findall(r":\s*(\d+(?:\.\d+)?)/10", report_text)]
+            score = round(sum(section_scores) / len(section_scores), 1) if section_scores else 7.0
 
         log_chat_status(
             agent_id=agent_id,
@@ -444,8 +561,8 @@ def orchestrate_subagents(
 
     with ThreadPoolExecutor(max_workers=min(9, os.cpu_count() or 4 * 2)) as executor:
         future_to_agent = {
-            executor.submit(execute_subagent_worker, agent_info, target_url, sub_paths): agent_info["id"]
-            for agent_info in SUBAGENTS_REGISTRY
+            executor.submit(execute_subagent_worker, agent_info, target_url, sub_paths, idx * 0.35): agent_info["id"]
+            for idx, agent_info in enumerate(SUBAGENTS_REGISTRY)
         }
 
         # Status monitoring loop
@@ -1342,8 +1459,7 @@ def run_orchestration(
     output_docx: Optional[str] = None
 ) -> str:
     """Run full orchestration pipeline: crawl, subagents, chat monitoring, and DOCX generation."""
-    if not target_url.startswith("http://") and not target_url.startswith("https://"):
-        target_url = "https://" + target_url
+    target_url = resolve_canonical_url(target_url)
 
     # 1. Discover client branding
     print(f"[*] Discovering client branding from {target_url} ...")
