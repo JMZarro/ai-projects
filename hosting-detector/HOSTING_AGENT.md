@@ -7,11 +7,13 @@ An agent that analyzes any website URL or domain name to identify its web hostin
 ## ⚡ Quick Start
 
 ### 1. Interactive Mode
+
 Run the agent without arguments to start an interactive prompt:
 
 ```bash
 python hosting_detector_agent.py
 ```
+
 *(or using the shortcut `python hosting_agent.py`)*
 
 ```text
@@ -26,23 +28,29 @@ Enter website URL: www.example1.com
 ```
 
 ### 2. Single Command-Line Lookup
+
 Pass any URL or domain directly as an argument:
 
 ```bash
 python hosting_detector_agent.py "www.example1.com"
 ```
+
 **Output:**
+
 ```text
 "www.example1.com" hosted by 'Hostinger' (https://www.hostinger.com/)
 ```
 
 ### 3. Verbose Diagnostic Mode (`-v` / `--verbose`)
+
 Inspect full DNS records, IPs, ASN, HTTP headers, and matching evidence:
 
 ```bash
 python hosting_detector_agent.py "nextjs.org" -v
 ```
+
 **Output:**
+
 ```text
 [+] Inspecting target: nextjs.org (Host: nextjs.org)
 "nextjs.org" hosted by 'Vercel' (https://vercel.com/)
@@ -60,6 +68,7 @@ Detection Breakdown:
 ```
 
 ### 4. JSON Mode (`--json`)
+
 Output structured JSON data for integration into other pipelines:
 
 ```bash
@@ -67,6 +76,7 @@ python hosting_detector_agent.py "shopify.com" --json
 ```
 
 ### 5. Batch Processing (`--file`)
+
 Process multiple URLs from a text file:
 
 ```bash
